@@ -25,18 +25,18 @@
     height: 100vh;
     height: 100dvh;
     width: 100vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-  /* Canvas fills the entire viewport edge-to-edge. The canvas's internal
-     resolution is set in JS to match the device's aspect ratio, so the CSS
-     scale has no distortion and no letterbox bars. */
+  /* Canvas CSS width/height are set by JS in fitToDevice() so iOS address-bar
+     toggles and desktop window resizes produce correct proportional sizing
+     (no stretching, no blue seam under the ground). */
   #game {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
     background: #4ec0ca;
     display: block;
-    width: 100vw;
-    height: 100vh;
-    height: 100dvh;
     cursor: pointer;
   }
 </style>
@@ -59,14 +59,38 @@
   function fitToDevice() {
     const vw = window.innerWidth  || document.documentElement.clientWidth;
     const vh = window.innerHeight || document.documentElement.clientHeight;
-    // Clamp to sensible bounds so a very tall / very short viewport still plays well.
-    const ratio = vh / vw;
-    H = Math.max(480, Math.min(900, Math.round(W * ratio)));
+    let maxCssW;
+    if (vh > vw) {
+      // Portrait (mobile) — extend canvas internal height to the device's
+      // exact aspect ratio, and let CSS fill the viewport's full width.
+      const ratio = vh / vw;
+      H = Math.max(480, Math.min(900, Math.round(W * ratio)));
+      maxCssW = vw;
+    } else {
+      // Landscape (desktop) — fixed mobile-style portrait aspect; cap CSS
+      // width so the game doesn't stretch across the whole monitor.
+      H = 720;
+      maxCssW = 500;
+    }
     canvas.width = W;
     canvas.height = H;
     ctx.imageSmoothingEnabled = false;
+    // Compute display size from canvas aspect, capped by maxCssW and viewport height.
+    const aspect = W / H;
+    let cssW = maxCssW;
+    let cssH = cssW / aspect;
+    if (cssH > vh) { cssH = vh; cssW = cssH * aspect; }
+    canvas.style.width  = cssW + "px";
+    canvas.style.height = cssH + "px";
   }
   fitToDevice();
+  // Re-fit when the viewport changes (iOS address bar show/hide, rotation,
+  // desktop window resize) so the ground always stays pinned to the bottom.
+  window.addEventListener("resize", fitToDevice);
+  window.addEventListener("orientationchange", fitToDevice);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", fitToDevice);
+  }
 
   function makeSprite(rows, palette) {
     const h = rows.length;
