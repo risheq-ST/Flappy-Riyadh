@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>Flappy Bird — Riyadh</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #111;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  #game {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    background: #4ec0ca;
+    box-shadow: 0 0 30px rgba(0,0,0,0.6);
+    display: block;
+    max-height: 100vh;
+    max-width: 100vw;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="288" height="512"></canvas>
+<script>
+(() => {
+  "use strict";
+
+  const W = 288, H = 512;
+  const GROUND_H = 56;
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+
+  function fit() {
+    const sw = window.innerWidth, sh = window.innerHeight;
+    const scale = Math.min(sw / W, sh / H);
+    canvas.style.width  = Math.floor(W * scale) + "px";
+    canvas.style.height = Math.floor(H * scale) + "px";
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  function makeSprite(rows, palette) {
+    const h = rows.length;
+    const w = rows[0].length;
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const cx = c.getContext("2d");
+    const img = cx.createImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      const row = rows[y];
+      for (let x = 0; x < w; x++) {
+        const ch = row[x];
+        const col = palette[ch];
+        const i = (y * w + x) * 4;
+        if (!col) {
+          img.data[i+3] = 0;
+        } else {
+          img.data[i  ] = col[0];
+          img.data[i+1] = col[1];
+          img.data[i+2] = col[2];
+          img.data[i+3] = 255;
+        }
+      }
+    }
+    cx.putImageData(img, 0, 0);
+    return c;
+  }
+
+  const PAL = {
+    ".": null,
+    "K": [83, 56, 70],       // outline / agal black
+    "W": [255, 255, 255],    // white
+    "Y": [250, 214, 68],     // body yellow
+    "y": [232, 167, 59],     // darker yellow
+    "O": [246, 148, 31],     // beak orange
+    "R": [228, 59, 68],      // red (wing + shemagh)
+    "r": [183, 42, 42],      // dark red
+    "G": [115, 191, 46],     // pipe main
+    "H": [200, 236, 110],    // pipe highlight
+    "L": [155, 216, 70],     // pipe light
+    "D": [82, 133, 34],      // pipe dark
+    "S": [48, 84, 16],       // pipe shadow
+    "T": [222, 216, 149],    // ground tan
+    "t": [186, 168, 97],     // ground darker
+    "u": [152, 134, 75],     // ground darkest
+    "g": [135, 198, 40],     // grass bright
+    "h": [92, 160, 32],      // grass darker
+    "C": [255, 255, 255],    // cloud white
+    "c": [220, 230, 236],    // cloud shadow
+  };
+
+  // --------- Bird: 17x12, 3 frames ---------
+  const BIRD_UP = [
+    ".....KKKKKK......",
+    "....KyYYYYYKK....",
+    "...KyYYYYYWWWKK..",
+    "..KyYYYYYYYKWWKK.",
+    "..KKKKYYYYYYKWKOO",
+    ".KKHHHHKYYYYYKOOK",
+    ".KHLLLLHKYYYYKOOK",
+    ".KKHHHHKKYYYYKKKK",
+    "..KKKKKYYYYYYWKK.",
+    "...KYYYWWWWWWWK..",
+    "...KKYWWWWWWYKK..",
+    ".....KKKKKKKK....",
+  ];
+  const BIRD_MID = [
+    ".....KKKKKK......",
+    "....KyYYYYYKK....",
+    "...KyYYYYYWWWKK..",
+    "..KyYYYYYYYKWWKK.",
+    "..KyYYYYYYYYKWKOO",
+    ".KKKKKKYYYYYKKOOK",
+    ".KRRRRRKYYYYYKOOK",
+    ".KKRRRRKKYYYYKKKK",
+    "..KKKKKYYYYYYWKK.",
+    "...KYYYWWWWWWWK..",
+    "...KKYWWWWWWYKK..",
+    ".....KKKKKKKK....",
+  ];
+  const BIRD_DOWN = [
+    ".....KKKKKK......",
+    "....KyYYYYYKK....",
+    "...KyYYYYYWWWKK..",
+    "..KyYYYYYYYKWWKK.",
+    "..KyYYYYYYYYKWKOO",
+    ".KyYYYYYYYYYYKOOK",
+    ".KKRRRRKYYYYYKOOK",
+    ".KRrrrrRKYYYYKKKK",
+    ".KKRRRRKKYYYYWKK.",
+    "...KYYYWWWWWWWK..",
+    "...KKYWWWWWWYKK..",
+    ".....KKKKKKKK....",
+  ];
+  const birdFrames = [BIRD_UP, BIRD_MID, BIRD_DOWN].map(r => makeSprite(r, PAL));
+
+  // Sprite dimensions at scale=2: 34 wide × 24 tall.
+  const BIRD_SPRITE_H = 24; // pixels on-screen (12 rows × 2)
+  const BIRD_BODY_OFFSET = 0;
+
+  // --------- Pipe cap: 28x14 ---------
+  const PIPE_CAP = (() => {
+    const top = "K".repeat(28);
+    const mid = "KHLL" + "G".repeat(21) + "SDK";
+    const bot = "K".repeat(28);
+    const rows = [top];
+    for (let i = 0; i < 12; i++) rows.push(mid);
+    rows.push(bot);
+    return rows;
+  })();
+
+  // --------- Pipe body: 24x8 ---------
+  const PIPE_BODY = (() => {
+    const mid = "KHLL" + "G".repeat(17) + "SDK";
+    return new Array(8).fill(mid);
+  })();
+
+  const pipeCapImg  = makeSprite(PIPE_CAP, PAL);
+  const pipeBodyImg = makeSprite(PIPE_BODY, PAL);
+
+  // --------- Ground tile: 20x24 ---------
+  const GROUND = [
+    "gggggggggggggggggggggggg",
+    "ghhgggghhggghhggggghhggg",
+    "hhhhhhhhhhhhhhhhhhhhhhhh",
+    "TTTTTTTTTTTTTTTTTTTTTTTT",
+    "TTtTTTTTtTTTTTTtTTTTTTtT",
+    "TtTTTTtTTTTtTTTTTtTTTTTT",
+    "TTTTtTTTTTTtTTTTTTtTTTTT",
+    "TTTTTTTTTTTTTTTTTTTTTTTT",
+    "tTTTTtTTTTTtTTTTTtTTTTTt",
+    "TTtTTTTTtTTTTTTtTTTTTTtT",
+    "uuuuuuuuuuuuuuuuuuuuuuuu",
+    "TTTTTTTTTTTTTTTTTTTTTTTT",
+    "tTTTTtTTTTTtTTTTTtTTTTTt",
+    "TTTTTTTTTTTTTTTTTTTTTTTT",
+    "TTtTTTTTtTTTTTTtTTTTTTtT",
+    "TTTTTTTTTTTTTTTTTTTTTTTT",
+    "TtTTTTtTTTTtTTTTTtTTTTTT",
+    "TTTTTTTTTTTTTTTTTTTTTTTT",
+    "uuuuuuuuuuuuuuuuuuuuuuuu",
+    "TTTTTTTTTTTTTTTTTTTTTTTT",
+  ];
+  const groundImg = makeSprite(GROUND, PAL);
+
+  // --------- Cloud: 32x10 ---------
+  const CLOUD = [
+    "..........CCCCCCCC..............",
+    ".......CCCCCCCCCCCCCC...........",
+    ".....CCCCCCCCCCCCCCCCCCC........",
+    "...CCCCCCCCCCCCCCCCCCCCCCCC.....",
+    "..CCCCCCCCCCCCCCCCCCCCCCCCCCCC..",
+    ".CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+    "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+    ".ccccccccccccccccccccccccccccccc",
+    "..cccccccccccccccccccccccccccc..",
+    "....ccccccccccccccccccccccc.....",
+  ];
+  const cloudImg = makeSprite(CLOUD, PAL);
+
+  // --------- Digits 0..9, 7x10 ---------
+  const DIGITS = {
+    "0": [".KKKKK.","KWWWWWK","KWWWWWK","KWWWWWK","KWWWWWK","KWWWWWK","KWWWWWK","KWWWWWK","KWWWWWK",".KKKKK."],
+    "1": ["..KKK..",".KWWK..","KWWWK..","..WWK..","..WWK..","..WWK..","..WWK..","..WWK..",".KWWWK.",".KKKKK."],
+    "2": [".KKKKK.","KWWWWWK","KKKKKWK","....KWK","...KWWK","..KWWK.",".KWWK..","KWWK...","KWWWWWK",".KKKKK."],
+    "3": [".KKKKK.","KWWWWWK","KKKKKWK","....KWK","..KKKWK","..KWWKK","....KWK","KKKKKWK","KWWWWWK",".KKKKK."],
+    "4": ["...KKK.","..KWWK.",".KWWWK.","KWWKWK.","KWKKWK.","KWWWWWK","KKKKKKK","....WK.","....WK.","....KK."],
+    "5": ["KKKKKKK","KWWWWWK","KWKKKKK","KWWWWK.","KKKKKWK","....KWK","....KWK","KKKKKWK","KWWWWWK",".KKKKK."],
+    "6": [".KKKKK.","KWWWWWK","KWKKKKK","KWWWWK.","KWWWWWK","KWKKKWK","KWKKKWK","KWWWWWK","KWWWWWK",".KKKKK."],
+    "7": ["KKKKKKK","KWWWWWK","KKKKKWK","....KWK","...KWK.","...KWK.","..KWK..","..KWK..","..KWK..","..KKK.."],
+    "8": [".KKKKK.","KWWWWWK","KWKKKWK","KWKKKWK","KWWWWWK","KWKKKWK","KWKKKWK","KWKKKWK","KWWWWWK",".KKKKK."],
+    "9": [".KKKKK.","KWWWWWK","KWKKKWK","KWKKKWK","KWWWWWK",".KKKKWK","....KWK","KKKKKWK","KWWWWWK",".KKKKK."],
+  };
+  const digitImgs = {};
+  for (const d in DIGITS) digitImgs[d] = makeSprite(DIGITS[d], PAL);
+
+  // ============ Riyadh skyline ============
+  // Warm sandstone colors for high contrast vs the teal sky.
+  // Landmarks (Kingdom Centre + Al Faisaliah) are placed at fixed positions
+  // across the 2×canvas-wide skyline so at least two are always visible.
+  function buildSkyline() {
+    const sw = W * 2, sh = 95;
+    const c = document.createElement("canvas");
+    c.width = sw; c.height = sh;
+    const cx = c.getContext("2d");
+    cx.clearRect(0, 0, sw, sh);
+
+    const baseY = sh;
+    const rng = mulberry32(2030);
+
+    // Pre-placed landmarks: guarantees visibility as user scrolls
+    const landmarks = [
+      { x: 20,  type: "kingdom" },
+      { x: 130, type: "faisaliah" },
+      { x: 250, type: "kingdom" },
+      { x: 380, type: "faisaliah" },
+      { x: 510, type: "kingdom" },
+    ];
+
+    // Fill the spaces BETWEEN landmarks with generic towers + palms
+    function fillRange(xStart, xEnd) {
+      let x = xStart;
+      while (x < xEnd - 6) {
+        const r = rng();
+        if (r < 0.22 && x + 14 < xEnd) {
+          drawPalm(cx, x + 3, baseY);
+          x += 14;
+        } else {
+          const bw = 9 + Math.floor(rng() * 16);
+          if (x + bw > xEnd) break;
+          const bh = 20 + Math.floor(rng() * 40);
+          const dark = rng() > 0.5;
+          drawBuilding(cx, x, baseY, bw, bh, dark);
+          x += bw + 1;
+        }
+      }
+    }
+
+    let prevEnd = 0;
+    for (const lm of landmarks) {
+      fillRange(prevEnd, lm.x);
+      if (lm.type === "kingdom") {
+        drawKingdomCentre(cx, lm.x, baseY);
+        prevEnd = lm.x + 34;
+      } else {
+        drawFaisaliah(cx, lm.x, baseY);
+        prevEnd = lm.x + 22;
+      }
+    }
+    fillRange(prevEnd, sw);
+    return c;
+  }
+
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function() {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // Generic Riyadh-style tower — warm sandstone, rows of windows
+  function drawBuilding(cx, x, baseY, bw, bh, dark) {
+    const body = dark ? "#b8823e" : "#d9a45a";   // warm sand, two shades
+    const outline = "#6e4a1c";
+    const window_ = "#3d2512";
+    cx.fillStyle = outline;
+    cx.fillRect(x, baseY - bh, bw, bh);
+    cx.fillStyle = body;
+    cx.fillRect(x + 1, baseY - bh + 1, bw - 2, bh - 1);
+    // Antenna occasionally
+    if ((x + bh) % 7 === 0) {
+      cx.fillStyle = outline;
+      cx.fillRect(x + Math.floor(bw / 2), baseY - bh - 4, 1, 4);
+    }
+    // Windows
+    cx.fillStyle = window_;
+    for (let wy = baseY - bh + 4; wy < baseY - 3; wy += 4) {
+      for (let wx = x + 2; wx < x + bw - 2; wx += 3) {
+        cx.fillRect(wx, wy, 2, 2);
+      }
+    }
+  }
+
+  // Kingdom Centre Tower — rectangular body with the iconic arch cutout on top
+  function drawKingdomCentre(cx, x, baseY) {
+    const body = "#8996a2";      // cool blue-grey (glass/steel)
+    const highlight = "#a8b5c0";
+    const outline = "#3a4550";
+    const window_ = "#2a3540";
+
+    // Outline first (acts as a 1px border around everything)
+    cx.fillStyle = outline;
+    // Main body outline 30×60
+    cx.fillRect(x, baseY - 60, 30, 60);
+    // Top section outline (two pillars + arch)
+    cx.fillRect(x,      baseY - 78, 9, 20);   // left pillar outline
+    cx.fillRect(x + 21, baseY - 78, 9, 20);   // right pillar outline
+    cx.fillRect(x + 2,  baseY - 80, 26, 2);   // arch top outline
+    cx.fillRect(x + 5,  baseY - 82, 20, 2);   // arch higher
+    cx.fillRect(x + 9,  baseY - 83, 12, 1);
+
+    // Body fill (inside outline)
+    cx.fillStyle = body;
+    cx.fillRect(x + 1, baseY - 59, 28, 59);
+    cx.fillRect(x + 1, baseY - 77, 7, 18);    // left pillar inside
+    cx.fillRect(x + 22, baseY - 77, 7, 18);   // right pillar inside
+    cx.fillRect(x + 3, baseY - 79, 24, 1);
+    cx.fillRect(x + 6, baseY - 81, 18, 1);
+    cx.fillRect(x + 10, baseY - 82, 10, 1);
+
+    // Vertical highlight stripe (left side, gives the glass tower sheen)
+    cx.fillStyle = highlight;
+    cx.fillRect(x + 2, baseY - 58, 2, 57);
+
+    // Window rows on main body
+    cx.fillStyle = window_;
+    for (let wy = baseY - 55; wy < baseY - 3; wy += 4) {
+      for (let wx = x + 5; wx < x + 27; wx += 3) cx.fillRect(wx, wy, 2, 2);
+    }
+    // Windows on the two pillars
+    for (let wy = baseY - 73; wy < baseY - 62; wy += 4) {
+      cx.fillRect(x + 3, wy, 2, 2);
+      cx.fillRect(x + 24, wy, 2, 2);
+    }
+  }
+
+  // Al Faisaliah Tower — rectangular base, pyramid top, golden sphere at apex
+  function drawFaisaliah(cx, x, baseY) {
+    const body = "#d9a45a";
+    const bodyDark = "#a87536";
+    const outline = "#6e4a1c";
+    const window_ = "#3d2512";
+
+    // Base tower — trapezoidal (slightly wider at bottom)
+    const baseH = 45;
+    // Outline
+    cx.fillStyle = outline;
+    for (let i = 0; i < baseH; i++) {
+      const w = 16 - Math.floor(i * 4 / baseH);  // 16 at top, 20 at bottom? No reversed.
+      // Actually Al Faisaliah narrows toward top. Use wider at bottom.
+      const width = 14 + Math.floor((baseH - i) * 4 / baseH);
+      const off = Math.floor((22 - width) / 2);
+      cx.fillRect(x + off, baseY - baseH + i, width, 1);
+    }
+
+    // Body fill (inside outline)
+    cx.fillStyle = body;
+    for (let i = 1; i < baseH; i++) {
+      const width = 14 + Math.floor((baseH - i) * 4 / baseH) - 2;
+      const off = Math.floor((22 - width) / 2);
+      cx.fillRect(x + off, baseY - baseH + i, width, 1);
+    }
+
+    // Pyramid top (18 px tall, tapers to 2 px)
+    const pyrH = 18;
+    const pyrBaseW = 14;
+    cx.fillStyle = outline;
+    for (let i = 0; i < pyrH; i++) {
+      const w = Math.max(2, pyrBaseW - Math.floor(i * (pyrBaseW - 2) / (pyrH - 1)));
+      const off = Math.floor((22 - w) / 2);
+      cx.fillRect(x + off, baseY - baseH - i, w, 1);
+    }
+    // Pyramid fill
+    cx.fillStyle = bodyDark;
+    for (let i = 1; i < pyrH; i++) {
+      const w = Math.max(2, pyrBaseW - Math.floor(i * (pyrBaseW - 2) / (pyrH - 1))) - 2;
+      if (w < 1) continue;
+      const off = Math.floor((22 - w) / 2);
+      cx.fillRect(x + off, baseY - baseH - i, w, 1);
+    }
+
+    // Golden sphere at the apex (Al Faisaliah's iconic golden ball)
+    const sphereY = baseY - baseH - pyrH - 3;
+    cx.fillStyle = outline;
+    cx.fillRect(x + 9, sphereY,     4, 1);
+    cx.fillRect(x + 8, sphereY + 1, 6, 4);
+    cx.fillRect(x + 9, sphereY + 5, 4, 1);
+    cx.fillStyle = "#ffd700"; // bright gold
+    cx.fillRect(x + 10, sphereY + 1, 4, 4);
+    cx.fillRect(x + 9,  sphereY + 2, 1, 2);
+    cx.fillRect(x + 13, sphereY + 2, 1, 2);
+    // Sphere specular highlight
+    cx.fillStyle = "#ffeb80";
+    cx.fillRect(x + 10, sphereY + 2, 1, 1);
+
+    // Antenna/spire below sphere connecting to pyramid
+    cx.fillStyle = outline;
+    cx.fillRect(x + 11, baseY - baseH - pyrH, 1, 3);
+
+    // Windows on base
+    cx.fillStyle = window_;
+    for (let wy = baseY - baseH + 4; wy < baseY - 4; wy += 4) {
+      cx.fillRect(x + 7,  wy, 1, 2);
+      cx.fillRect(x + 11, wy, 1, 2);
+      cx.fillRect(x + 15, wy, 1, 2);
+    }
+  }
+
+  // Date palm — thin trunk + spreading fronds
+  function drawPalm(cx, x, baseY) {
+    const trunk = "#4d2e14";
+    const trunkLight = "#6e4528";
+    const frond = "#2d5f2a";
+    const frondDark = "#1d4018";
+
+    // Trunk — slight taper/curve
+    cx.fillStyle = trunk;
+    for (let i = 0; i < 20; i++) {
+      const sway = (i > 10) ? 1 : 0;
+      cx.fillRect(x - sway, baseY - i, 2, 1);
+    }
+    cx.fillStyle = trunkLight;
+    for (let i = 2; i < 20; i += 3) {
+      cx.fillRect(x - (i > 10 ? 1 : 0), baseY - i, 1, 1);
+    }
+
+    // Fronds — top fan shape
+    const fy = baseY - 20;
+    // Center spike
+    cx.fillStyle = frondDark;
+    cx.fillRect(x, fy - 3, 2, 3);
+    // Upper fronds
+    cx.fillStyle = frond;
+    cx.fillRect(x - 2, fy - 2, 6, 1);
+    cx.fillRect(x - 4, fy - 1, 10, 1);
+    cx.fillRect(x - 5, fy,     12, 1);
+    // Side-drooping fronds
+    cx.fillRect(x - 7, fy + 1, 5, 1);
+    cx.fillRect(x + 4, fy + 1, 5, 1);
+    cx.fillRect(x - 8, fy + 2, 3, 2);
+    cx.fillRect(x + 6, fy + 2, 3, 2);
+    cx.fillStyle = frondDark;
+    cx.fillRect(x - 9, fy + 4, 2, 1);
+    cx.fillRect(x + 8, fy + 4, 2, 1);
+  }
+
+  const skylineImg = buildSkyline();
+
+  // --------- Drawing helpers ---------
+  function drawSprite(img, x, y, scale = 1, angle = 0) {
+    const w = img.width * scale, h = img.height * scale;
+    if (angle !== 0) {
+      ctx.save();
+      ctx.translate(Math.round(x + w / 2), Math.round(y + h / 2));
+      ctx.rotate(angle);
+      ctx.drawImage(img, Math.round(-w / 2), Math.round(-h / 2), w, h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, Math.round(x), Math.round(y), w, h);
+    }
+  }
+
+  function drawNumber(n, cx, cy, scale) {
+    const s = String(n);
+    const dw = 7 * scale + 1;
+    const totalW = s.length * dw - 1;
+    let x = Math.round(cx - totalW / 2);
+    const y = Math.round(cy - 5 * scale);
+    for (const ch of s) {
+      drawSprite(digitImgs[ch], x, y, scale);
+      x += dw;
+    }
+  }
+
+  // --------- Audio (WebAudio, lazy) ---------
+  let audioCtx = null;
+  function ensureAudio() {
+    if (audioCtx) return;
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { audioCtx = null; }
+  }
+  function beep(type, freq, dur, vol = 0.15, slide = 0) {
+    if (!audioCtx) return;
+    const t0 = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), t0 + dur);
+    gain.gain.setValueAtTime(vol, t0);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  }
+  function noiseBurst(dur, vol = 0.2) {
+    if (!audioCtx) return;
+    const sr = audioCtx.sampleRate;
+    const len = Math.floor(sr * dur);
+    const buf = audioCtx.createBuffer(1, len, sr);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = audioCtx.createBufferSource();
+    const gain = audioCtx.createGain();
+    gain.gain.value = vol;
+    src.buffer = buf;
+    src.connect(gain).connect(audioCtx.destination);
+    src.start();
+  }
+  const sfx = {
+    flap:  () => beep("square", 520, 0.08, 0.12, -60),
+    score: () => beep("sine",   880, 0.12, 0.14),
+    hit:   () => noiseBurst(0.15, 0.25),
+    die:   () => beep("square", 420, 0.35, 0.12, -300),
+  };
+
+  // --------- Game state ---------
+  const STATE = { READY: 0, PLAYING: 1, GAMEOVER: 2 };
+  let state = STATE.READY;
+
+  const bird = { x: 70, y: H / 2, vy: 0, frame: 0, frameTimer: 0, angle: 0 };
+
+  const pipes = [];
+  const PIPE_W = pipeCapImg.width;
+  const GAP = 115;
+  const PIPE_INTERVAL = 85;
+  const SCROLL = 2.5;
+  let spawnTimer = 0;
+
+  let groundOff = 0;
+  let skylineOff = 0;
+
+  const clouds = [];
+  for (let i = 0; i < 4; i++) {
+    clouds.push({ x: Math.random() * W, y: 40 + Math.random() * 140 });
+  }
+
+  let score = 0;
+  let best = 0;
+  try { best = parseInt(localStorage.getItem("flappyBest") || "0", 10) || 0; } catch(e){}
+
+  let gameoverLock = 0;
+
+  function reset() {
+    bird.x = 70;
+    bird.y = H / 2 - 30;
+    bird.vy = 0;
+    bird.angle = 0;
+    bird.frame = 0;
+    bird.frameTimer = 0;
+    pipes.length = 0;
+    spawnTimer = 0;
+    score = 0;
+    state = STATE.READY;
+  }
+
+  function startPlaying() { state = STATE.PLAYING; flap(); }
+  function flap() { bird.vy = -7.5; bird.angle = -0.45; sfx.flap(); }
+
+  function die() {
+    if (state !== STATE.PLAYING) return;
+    state = STATE.GAMEOVER;
+    gameoverLock = 30;
+    sfx.hit();
+    setTimeout(sfx.die, 120);
+    if (score > best) {
+      best = score;
+      try { localStorage.setItem("flappyBest", String(best)); } catch(e){}
+    }
+  }
+
+  function spawnPipe() {
+    const minGapY = 60;
+    const maxGapY = H - GROUND_H - 60 - GAP;
+    const gapY = minGapY + Math.random() * (maxGapY - minGapY);
+    pipes.push({ x: W + 10, gapY, passed: false });
+  }
+
+  // --------- Update ---------
+  function update() {
+    for (const c of clouds) {
+      c.x -= 0.3;
+      if (c.x + cloudImg.width < 0) {
+        c.x = W + Math.random() * 40;
+        c.y = 30 + Math.random() * 160;
+      }
+    }
+
+    if (state === STATE.READY) {
+      bird.y = H / 2 - 30 + Math.sin(performance.now() / 220) * 6;
+      bird.angle = 0;
+      bird.frameTimer++;
+      if (bird.frameTimer >= 7) { bird.frameTimer = 0; bird.frame = (bird.frame + 1) % 3; }
+      groundOff = (groundOff + SCROLL) % groundImg.width;
+      skylineOff = (skylineOff + SCROLL * 0.3) % skylineImg.width;
+      return;
+    }
+
+    if (state === STATE.PLAYING) {
+      bird.vy += 0.4;
+      if (bird.vy > 10) bird.vy = 10;
+      bird.y += bird.vy;
+
+      if (bird.vy < 0) bird.angle = -0.45;
+      else bird.angle = Math.min(bird.angle + 0.05, Math.PI / 2);
+
+      bird.frameTimer++;
+      const framePace = bird.vy < 0 ? 3 : 7;
+      if (bird.frameTimer >= framePace) {
+        bird.frameTimer = 0;
+        bird.frame = (bird.frame + 1) % 3;
+      }
+
+      spawnTimer++;
+      if (spawnTimer >= PIPE_INTERVAL) { spawnTimer = 0; spawnPipe(); }
+      for (const p of pipes) p.x -= SCROLL;
+      while (pipes.length && pipes[0].x + PIPE_W < 0) pipes.shift();
+
+      for (const p of pipes) {
+        if (!p.passed && p.x + PIPE_W < bird.x) {
+          p.passed = true;
+          score++;
+          sfx.score();
+        }
+      }
+
+      groundOff = (groundOff + SCROLL) % groundImg.width;
+      skylineOff = (skylineOff + SCROLL * 0.3) % skylineImg.width;
+
+      // Collision AABB — body only (skip shemagh at top)
+      const bx = bird.x + 4;
+      const by = bird.y + BIRD_BODY_OFFSET + 4;
+      const bw = 17 * 2 - 8;
+      const bh = 12 * 2 - 8;
+
+      if (by + bh >= H - GROUND_H) {
+        bird.y = H - GROUND_H - BIRD_SPRITE_H;
+        die();
+        return;
+      }
+      if (bird.y + BIRD_BODY_OFFSET < -8) {
+        bird.y = -8 - BIRD_BODY_OFFSET;
+        die();
+        return;
+      }
+
+      for (const p of pipes) {
+        if (bx + bw < p.x || bx > p.x + PIPE_W) continue;
+        if (by < p.gapY || by + bh > p.gapY + GAP) { die(); return; }
+      }
+      return;
+    }
+
+    if (state === STATE.GAMEOVER) {
+      if (bird.y + BIRD_SPRITE_H < H - GROUND_H) {
+        bird.vy += 0.5;
+        bird.y += bird.vy;
+        bird.angle = Math.min(bird.angle + 0.08, Math.PI / 2);
+      } else {
+        bird.y = H - GROUND_H - BIRD_SPRITE_H;
+        bird.vy = 0;
+        bird.angle = Math.PI / 2;
+      }
+      if (gameoverLock > 0) gameoverLock--;
+      return;
+    }
+  }
+
+  // --------- Render ---------
+  function drawBackground() {
+    // Solid Flappy Bird sky
+    ctx.fillStyle = "#4ec0ca";
+    ctx.fillRect(0, 0, W, H - GROUND_H);
+
+    // Clouds
+    for (const c of clouds) drawSprite(cloudImg, c.x, c.y, 1);
+
+    // Skyline (sits directly above ground)
+    const skyY = H - GROUND_H - skylineImg.height;
+    const sw = skylineImg.width;
+    for (let x = -skylineOff; x < W; x += sw) {
+      ctx.drawImage(skylineImg, Math.round(x), skyY);
+    }
+  }
+
+  function drawPipes() {
+    const capH = pipeCapImg.height;
+    const bodyW = pipeBodyImg.width;
+    const bodyH = pipeBodyImg.height;
+    const bodyX = (PIPE_W - bodyW) / 2;
+    for (const p of pipes) {
+      const px = Math.round(p.x);
+      const topCapY = p.gapY - capH;
+      for (let y = 0; y < topCapY; y += bodyH) {
+        ctx.drawImage(pipeBodyImg, Math.round(p.x + bodyX), y);
+      }
+      ctx.drawImage(pipeCapImg, px, Math.round(topCapY));
+      const botCapY = p.gapY + GAP;
+      ctx.drawImage(pipeCapImg, px, Math.round(botCapY));
+      for (let y = botCapY + capH; y < H - GROUND_H; y += bodyH) {
+        ctx.drawImage(pipeBodyImg, Math.round(p.x + bodyX), y);
+      }
+    }
+  }
+
+  function drawGround() {
+    const gw = groundImg.width;
+    const y = H - GROUND_H;
+    for (let x = -groundOff; x < W; x += gw) {
+      ctx.drawImage(groundImg, 0, 0, gw, groundImg.height,
+                    Math.round(x), y, gw, GROUND_H);
+    }
+  }
+
+  function drawBird() {
+    const img = birdFrames[bird.frame];
+    drawSprite(img, bird.x, bird.y, 2, bird.angle);
+  }
+
+  function panel(x, y, w, h) {
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  }
+
+  function textCenter(s, x, y, size, color = "#fff", shadow = true) {
+    ctx.font = `bold ${size}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if (shadow) {
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillText(s, x + 2, y + 2);
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(s, x, y);
+  }
+
+  function drawHUD() {
+    if (state === STATE.READY) {
+      textCenter("FLAPPY RIYADH", W / 2, 110, 26, "#fff");
+      textCenter("Get Ready!", W / 2, 150, 18, "#ffe066");
+      textCenter("Tap / Space to Flap", W / 2, H / 2 + 80, 14, "#fff");
+    } else if (state === STATE.PLAYING) {
+      drawNumber(score, W / 2, 60, 3);
+    } else if (state === STATE.GAMEOVER) {
+      textCenter("GAME OVER", W / 2, 120, 28, "#ff5555");
+      panel(W / 2 - 90, 160, 180, 110);
+      textCenter("SCORE",  W / 2 - 40, 185, 12, "#fff");
+      textCenter("BEST",   W / 2 + 40, 185, 12, "#fff");
+      drawNumber(score, W / 2 - 40, 220, 2);
+      drawNumber(best,  W / 2 + 40, 220, 2);
+      textCenter("Tap / R to Restart", W / 2, 300, 14, "#fff");
+    }
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    drawBackground();
+    drawPipes();
+    drawGround();
+    drawBird();
+    drawHUD();
+  }
+
+  // --------- Input ---------
+  function onFlap() {
+    ensureAudio();
+    if (state === STATE.READY) startPlaying();
+    else if (state === STATE.PLAYING) flap();
+    else if (state === STATE.GAMEOVER && gameoverLock <= 0) reset();
+  }
+
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space" || e.code === "ArrowUp") {
+      e.preventDefault();
+      onFlap();
+    } else if (e.code === "KeyR") {
+      if (state === STATE.GAMEOVER && gameoverLock <= 0) reset();
+    }
+  });
+  canvas.addEventListener("mousedown", (e) => { e.preventDefault(); onFlap(); });
+  canvas.addEventListener("touchstart", (e) => { e.preventDefault(); onFlap(); }, { passive: false });
+
+  // --------- Main loop ---------
+  const STEP_MS = 1000 / 60;
+  let acc = 0;
+  let last = performance.now();
+  function loop(now) {
+    let dt = now - last;
+    if (dt > 250) dt = 250;
+    last = now;
+    acc += dt;
+    while (acc >= STEP_MS) { update(); acc -= STEP_MS; }
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  reset();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
