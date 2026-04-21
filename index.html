@@ -591,7 +591,10 @@
   const PIPE_W = pipeCapImg.width;
   const GAP = 115;
   const PIPE_INTERVAL = 85;
-  const SCROLL = 2.5;
+  const BASE_SCROLL = 2.5;
+  const SCROLL_STEP = 0.15;   // speed added per 10 points
+  const SCROLL_MAX = 4.5;     // cap so it stays playable
+  let SCROLL = BASE_SCROLL;
   let spawnTimer = 0;
 
   let groundOff = 0;
@@ -618,6 +621,7 @@
     pipes.length = 0;
     spawnTimer = 0;
     score = 0;
+    SCROLL = BASE_SCROLL;
     state = STATE.READY;
   }
 
@@ -688,6 +692,10 @@
           p.passed = true;
           score++;
           sfx.score();
+          // Difficulty ramp: every 10 points, nudge the scroll speed up a bit.
+          if (score % 10 === 0) {
+            SCROLL = Math.min(SCROLL_MAX, BASE_SCROLL + (score / 10) * SCROLL_STEP);
+          }
         }
       }
 
