@@ -27,9 +27,21 @@
     width: 100vw;
     position: relative;
   }
-  /* Canvas is absolute-positioned at the top-left of the viewport and sized
-     by JS in fitToDevice() to exactly match the visible viewport. No flex
-     centering — that was leaving a small vertical gap above/below on iOS. */
+  /* Invisible probe — its computed padding resolves env(safe-area-inset-*)
+     to pixel values that JS can read. Using the probe avoids the unreliability
+     of reading env()-valued CSS variables directly via getComputedStyle. */
+  #sa-probe {
+    position: absolute;
+    top: 0; left: 0; width: 0; height: 0;
+    visibility: hidden;
+    pointer-events: none;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  /* Canvas is positioned by JS so its top edge sits just below the Dynamic
+     Island / notch safe-area. No flex centering — leaves no gap. */
   #game {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
@@ -44,6 +56,7 @@
 </style>
 </head>
 <body>
+<div id="sa-probe"></div>
 <canvas id="game" width="288" height="512"></canvas>
 <script>
 (() => {
@@ -58,18 +71,36 @@
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
 
+  const saProbe = document.getElementById("sa-probe");
+  function readSafeArea() {
+    if (!saProbe) return { top: 0, bottom: 0, left: 0, right: 0 };
+    const s = getComputedStyle(saProbe);
+    return {
+      top:    parseFloat(s.paddingTop)    || 0,
+      bottom: parseFloat(s.paddingBottom) || 0,
+      left:   parseFloat(s.paddingLeft)   || 0,
+      right:  parseFloat(s.paddingRight)  || 0,
+    };
+  }
+
   function applyFit(vw, vh) {
+    // Subtract the iOS safe-area insets (Dynamic Island at top, home bar at
+    // bottom, rounded-corner side insets in landscape) so the canvas occupies
+    // only the *visible* rectangle — nothing drawn is hidden under the notch.
+    const sa = readSafeArea();
+    const availW = Math.max(1, vw - sa.left  - sa.right);
+    const availH = Math.max(1, vh - sa.top   - sa.bottom);
     let cssW, cssH, newH;
-    if (vh > vw) {
-      cssW = vw;
-      cssH = vh;
-      newH = Math.max(480, Math.min(1200, Math.round(W * vh / vw)));
+    if (availH > availW) {
+      cssW = availW;
+      cssH = availH;
+      newH = Math.max(480, Math.min(1200, Math.round(W * availH / availW)));
     } else {
       newH = 720;
       const aspect = W / newH;
-      cssW = Math.min(vw, 500);
+      cssW = Math.min(availW, 500);
       cssH = cssW / aspect;
-      if (cssH > vh) { cssH = vh; cssW = cssH * aspect; }
+      if (cssH > availH) { cssH = availH; cssW = cssH * aspect; }
     }
     // Only touch canvas.width/height when they actually change — assigning
     // to these clears the canvas and reallocates the backbuffer, which is
@@ -83,6 +114,10 @@
     const wStr = cssW + "px", hStr = cssH + "px";
     if (canvas.style.width  !== wStr) canvas.style.width  = wStr;
     if (canvas.style.height !== hStr) canvas.style.height = hStr;
+    // Push canvas below the top safe-area so y=0 of the game lands just
+    // under the Dynamic Island, not behind it.
+    const topStr = sa.top + "px";
+    if (canvas.style.top !== topStr) canvas.style.top = topStr;
   }
   let fitScheduled = false;
   function fitToDevice() {
