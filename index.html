@@ -657,8 +657,14 @@
   let skylineOff = 0;
 
   const clouds = [];
-  for (let i = 0; i < 4; i++) {
-    clouds.push({ x: Math.random() * W, y: 40 + Math.random() * 140 });
+  function cloudY() {
+    // Spread clouds across the upper ~55% of the sky, so tall phones
+    // don't leave the top half empty.
+    const skyH = Math.max(180, H - GROUND_H);
+    return 20 + Math.random() * (skyH * 0.55);
+  }
+  for (let i = 0; i < 7; i++) {
+    clouds.push({ x: Math.random() * W, y: cloudY() });
   }
 
   let score = 0;
@@ -697,7 +703,12 @@
   }
 
   function spawnPipe() {
-    const minGapY = 60;
+    // Scale minGapY with canvas height so the top pipe body is always tall
+    // enough to reach well below the iOS Dynamic Island / notch. With a
+    // fixed minGapY=60, a bad roll produces only a 46px top pipe — on a
+    // tall phone that entire pipe is hidden behind the island and the top
+    // of the screen reads as empty sky.
+    const minGapY = Math.max(60, Math.round(60 + (H - 512) * 0.55));
     const maxGapY = H - GROUND_H - 60 - GAP;
     const gapY = minGapY + Math.random() * (maxGapY - minGapY);
     pipes.push({ x: W + 10, gapY, passed: false });
@@ -709,7 +720,7 @@
       c.x -= 0.3;
       if (c.x + cloudImg.width < 0) {
         c.x = W + Math.random() * 40;
-        c.y = 30 + Math.random() * 160;
+        c.y = cloudY();
       }
     }
 
