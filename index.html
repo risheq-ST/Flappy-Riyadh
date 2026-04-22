@@ -25,19 +25,21 @@
     height: 100vh;
     height: 100dvh;
     width: 100vw;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    position: relative;
   }
-  /* Canvas CSS width/height are set by JS in fitToDevice() so iOS address-bar
-     toggles and desktop window resizes produce correct proportional sizing
-     (no stretching, no blue seam under the ground). */
+  /* Canvas is absolute-positioned at the top-left of the viewport and sized
+     by JS in fitToDevice() to exactly match the visible viewport. No flex
+     centering — that was leaving a small vertical gap above/below on iOS. */
   #game {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
     background: #4ec0ca;
     display: block;
     cursor: pointer;
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translateX(-50%);
   }
 </style>
 </head>
@@ -57,29 +59,32 @@
   const ctx = canvas.getContext("2d");
 
   function fitToDevice() {
-    const vw = window.innerWidth  || document.documentElement.clientWidth;
-    const vh = window.innerHeight || document.documentElement.clientHeight;
-    let maxCssW;
+    // Prefer visualViewport — on iOS it reports the TRUE visible area
+    // (accounting for the address bar), so the canvas won't be sized to
+    // a larger window and leave a blue gap at the top when centered.
+    const vv = window.visualViewport;
+    const vw = vv ? vv.width  : (window.innerWidth  || document.documentElement.clientWidth);
+    const vh = vv ? vv.height : (window.innerHeight || document.documentElement.clientHeight);
+    let cssW, cssH;
     if (vh > vw) {
-      // Portrait (mobile) — extend canvas internal height to the device's
-      // exact aspect ratio, and let CSS fill the viewport's full width.
-      const ratio = vh / vw;
-      H = Math.max(480, Math.min(900, Math.round(W * ratio)));
-      maxCssW = vw;
+      // Portrait (mobile) — CSS canvas fills the viewport edge-to-edge.
+      // Internal H is chosen so the canvas aspect matches the viewport
+      // aspect exactly — no stretch, no letterbox.
+      cssW = vw;
+      cssH = vh;
+      H = Math.max(480, Math.min(1200, Math.round(W * vh / vw)));
     } else {
       // Landscape (desktop) — fixed mobile-style portrait aspect; cap CSS
       // width so the game doesn't stretch across the whole monitor.
       H = 720;
-      maxCssW = 500;
+      const aspect = W / H;
+      cssW = Math.min(vw, 500);
+      cssH = cssW / aspect;
+      if (cssH > vh) { cssH = vh; cssW = cssH * aspect; }
     }
     canvas.width = W;
     canvas.height = H;
     ctx.imageSmoothingEnabled = false;
-    // Compute display size from canvas aspect, capped by maxCssW and viewport height.
-    const aspect = W / H;
-    let cssW = maxCssW;
-    let cssH = cssW / aspect;
-    if (cssH > vh) { cssH = vh; cssW = cssH * aspect; }
     canvas.style.width  = cssW + "px";
     canvas.style.height = cssH + "px";
   }
@@ -90,7 +95,11 @@
   window.addEventListener("orientationchange", fitToDevice);
   if (window.visualViewport) {
     window.visualViewport.addEventListener("resize", fitToDevice);
+    window.visualViewport.addEventListener("scroll", fitToDevice);
   }
+  // A second fit after the first frame catches cases where iOS hasn't yet
+  // settled on a final viewport height at script-parse time.
+  window.addEventListener("load", fitToDevice);
 
   function makeSprite(rows, palette) {
     const h = rows.length;
