@@ -197,6 +197,8 @@
     "c": [78, 95, 135],      // cloud shadow
     "M": [245, 235, 190],    // moon body
     "m": [205, 195, 150],    // moon crater
+    "N": [0, 72, 40],        // Saudi flag green (night-muted)
+    "w": [220, 225, 210],    // flag white (moonlit shahada + sword)
   };
 
   // --------- Bird: 17x12, 3 frames ---------
@@ -326,6 +328,39 @@
     "..............",
   ];
   const moonImg = makeSprite(MOON, PAL);
+
+  // --------- Saudi flag: 42x28, pole on left, shahada + sword stylized ---------
+  const FLAG = [
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNN.ww.www.ww.www.w.ww.ww.w.www.ww.w..NNN",
+    "NNN..ww.w..w.www.w.ww.ww..www.w.ww..w.NNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNN.w.www.w.www.ww.w.ww.www.w.ww..ww.NNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNwNNN",
+    "NNNNwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwNNN",
+    "NNNNwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNwNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+    "NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN",
+  ];
+  const flagImg = makeSprite(FLAG, PAL);
 
   // --------- Digits 0..9, 7x10 ---------
   const DIGITS = {
@@ -902,8 +937,26 @@
     // Clouds (dim, drift over stars for depth).
     for (const c of clouds) drawSprite(cloudImg, c.x, c.y, 1);
 
-    // Skyline (sits directly above ground).
+    // Saudi flag — drawn before the skyline so buildings can occlude the pole.
     const skyY = H - GROUND_H - skylineImg.height;
+    const flagY = skyY - 65;
+    const poleX = 30;
+    const poleTopY = flagY - 6;
+    const poleBotY = skyY + 40;
+    // Pole shaft (dark, 2px wide)
+    ctx.fillStyle = "#2d3441";
+    ctx.fillRect(poleX, poleTopY, 2, poleBotY - poleTopY);
+    // Thin highlight on the moonlit side of the pole
+    ctx.fillStyle = "#4a5468";
+    ctx.fillRect(poleX, poleTopY, 1, poleBotY - poleTopY);
+    // Finial cap at top of pole
+    ctx.fillStyle = "#8a93a6";
+    ctx.fillRect(poleX - 1, poleTopY - 2, 4, 2);
+    ctx.fillRect(poleX, poleTopY - 3, 2, 1);
+    // Flag itself
+    ctx.drawImage(flagImg, poleX + 2, flagY);
+
+    // Skyline (sits directly above ground).
     const sw = skylineImg.width;
     for (let x = -skylineOff; x < W; x += sw) {
       ctx.drawImage(skylineImg, Math.round(x), skyY);
