@@ -189,11 +189,10 @@
     "L": [155, 216, 70],     // pipe light
     "D": [82, 133, 34],      // pipe dark
     "S": [48, 84, 16],       // pipe shadow
-    "T": [112, 96, 62],      // ground tan (night-dim)
-    "t": [82, 68, 42],       // ground darker
-    "u": [54, 44, 28],       // ground darkest
-    "g": [60, 95, 35],       // grass (moonlit)
-    "h": [34, 58, 20],       // grass darker
+    "T": [165, 140, 95],     // moonlit desert sand ridge
+    "t": [115, 95, 65],      // main sand body
+    "u": [78, 62, 42],       // dune shadow / ripple
+    "p": [45, 35, 22],       // dark pebble accent
     "C": [118, 135, 175],    // cloud (moonlit)
     "c": [78, 95, 135],      // cloud shadow
     "M": [245, 235, 190],    // moon body
@@ -269,28 +268,28 @@
   const pipeCapImg  = makeSprite(PIPE_CAP, PAL);
   const pipeBodyImg = makeSprite(PIPE_BODY, PAL);
 
-  // --------- Ground tile: 20x24 ---------
+  // --------- Ground tile: 20x24 — moonlit desert sand ---------
   const GROUND = [
-    "gggggggggggggggggggggggg",
-    "ghhgggghhggghhggggghhggg",
-    "hhhhhhhhhhhhhhhhhhhhhhhh",
     "TTTTTTTTTTTTTTTTTTTTTTTT",
-    "TTtTTTTTtTTTTTTtTTTTTTtT",
-    "TtTTTTtTTTTtTTTTTtTTTTTT",
-    "TTTTtTTTTTTtTTTTTTtTTTTT",
-    "TTTTTTTTTTTTTTTTTTTTTTTT",
-    "tTTTTtTTTTTtTTTTTtTTTTTt",
-    "TTtTTTTTtTTTTTTtTTTTTTtT",
+    "TtTTTTtTTTtTTTTtTTTtTTTT",
+    "tttttttttttttttttttttttt",
+    "ttttTttttttTtttttttTtttt",
+    "tttttttttttttttttttttttt",
+    "tttuuuuttttttuuuuttttttt",
+    "tttttttttttttttttttttttt",
+    "tpttttttttttpttttttttttt",
+    "tttttttttttttttttttttttt",
     "uuuuuuuuuuuuuuuuuuuuuuuu",
-    "TTTTTTTTTTTTTTTTTTTTTTTT",
-    "tTTTTtTTTTTtTTTTTtTTTTTt",
-    "TTTTTTTTTTTTTTTTTTTTTTTT",
-    "TTtTTTTTtTTTTTTtTTTTTTtT",
-    "TTTTTTTTTTTTTTTTTTTTTTTT",
-    "TtTTTTtTTTTtTTTTTtTTTTTT",
-    "TTTTTTTTTTTTTTTTTTTTTTTT",
+    "tttttttttttttttttttttttt",
+    "ttTttttttttTttttttttTttt",
+    "tttttttttttttttttttttttt",
+    "ttttuuuuttttttttuuuutttt",
+    "tttttttttttttttttttttttt",
+    "tttttttptttttttttttttttt",
+    "tttttttttttttttttttttttt",
     "uuuuuuuuuuuuuuuuuuuuuuuu",
-    "TTTTTTTTTTTTTTTTTTTTTTTT",
+    "tttttttttttttttttttttttt",
+    "uuuuuuuuuuuuuuuuuuuuuuuu",
   ];
   const groundImg = makeSprite(GROUND, PAL);
 
